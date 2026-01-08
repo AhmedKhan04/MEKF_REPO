@@ -1,0 +1,201 @@
+import numpy as np
+import quaternion as qt
+import Gyro
+import time 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import FuncAnimation
+
+class MEKF:
+    def __init__(self):
+        self.dt = 5   # Time step in milliseconds 
+        self.q_ref = qt.quaternion(1, 0, 0, 0)  # Reference quaternion
+        self.b_hat = np.array([0.0, 0.0, 0.0])  # Estimated gyro bias
+        self.x = np.zeros(6)  # State vector: [error angles; bias] 
+        self.estimate = qt.quaternion(1, 0, 0, 0)  # Initial orientation estimate
+        
+        # Process noise parameters
+        self.sigma_gyro = 0.01  # gyro noise rad/s
+        self.sigma_bias = 1e-5  # bias random walk
+        
+        # Initialize covariance matrix
+        self.P = np.eye(6) 
+        self.P[0:3, 0:3] *= (self.sigma_gyro**2)
+        self.P[3:6, 3:6] *= (self.sigma_bias**2)
+
+        # Measurement noise
+        sigma_acc = 0.05
+        self.R = np.eye(3) * (sigma_acc**2)
+        
+        # Reference gravity vector (inertial frame)
+        self.g_ref = np.array([0, 0, 9.81])  # down is +Z
+        
+        # Process noise mapping matrix (FIXED - no negative sign)
+        self.G = np.eye(6)
+        
+        # State transition matrix
+        self.Phi = np.eye(6)
+        
+        # Storage for measured acceleration
+        self.measured_accel = np.zeros(3)
+        self.a_pred = np.zeros(3)  # Predicted gravity in body frame
+
+        # Initialize Gyro object
+        self.baud = 115200
+        self.port = "COM11"
+        self.gyro = Gyro.Gyro(self.port, self.baud)
+        self.gyro.read_serial_port()
+
+    def skew(self, v):
+        """Skew-symmetric matrix from vector"""
+        return np.array([
+            [0, -v[2], v[1]],
+            [v[2], 0, -v[0]],
+            [-v[1], v[0], 0]
+        ])
+      
+    def predict_state(self):
+        """Predict the next state based on gyro measurements"""
+        t, ax, ay, az, gx, gy, gz = self.state_measurements()
+        
+        # Bias-corrected angular velocity
+        measured_omega = np.array([gx, gy, gz]) - self.b_hat
+        
+        # Store raw accelerometer reading (no bias correction for now)
+        self.measured_accel = np.array([ax, ay, az])
+        
+        # Propagate quaternion
+        self.estimate = self.estimate + 0.5 * qt.quaternion(0, *measured_omega) * self.estimate * (self.dt / 1000.0)
+        self.estimate = self.estimate.normalized()
+
+        # Update state transition matrix
+        dt_sec = self.dt / 1000.0
+        self.Phi[0:3, 0:3] = np.eye(3) - self.skew(measured_omega) * dt_sec
+        self.Phi[0:3, 3:6] = -np.eye(3) * dt_sec
+        self.Phi[3:6, 3:6] = np.eye(3)
+
+        # Discrete process noise covariance (FIXED scaling)
+        Q_d = np.zeros((6, 6))
+        Q_d[0:3, 0:3] = (self.sigma_gyro**2) * dt_sec * np.eye(3)
+        Q_d[3:6, 3:6] = (self.sigma_bias**2) * dt_sec * np.eye(3)
+
+        # Propagate covariance
+        self.P = self.Phi @ self.P @ self.Phi.T + self.G @ Q_d @ self.G.T
+
+    def update_state(self):
+        """Update the state based on accelerometer measurements"""
+        # Predict what accelerometer SHOULD read (gravity in body frame)
+        R_body_to_inertial = qt.as_rotation_matrix(self.estimate)
+        self.a_pred = R_body_to_inertial.T @ self.g_ref  # m/s²
+        
+        # Measurement Jacobian
+        H = np.zeros((3, 6))
+        H[0:3, 0:3] = -self.skew(self.a_pred)
+        
+        # Innovation covariance
+        S = H @ self.P @ H.T + self.R
+        
+        # Kalman gain
+        self.K = self.P @ H.T @ np.linalg.inv(S)
+        
+        # Innovation (residual) - BOTH in m/s²
+        r = self.measured_accel - self.a_pred
+        
+        # Check if we should trust this measurement (no dynamic accel)
+        accel_magnitude = np.linalg.norm(self.measured_accel)
+        if abs(accel_magnitude - 9.81) > 3.0:  # More than 3 m/s² off
+            print(f"Skipping update - dynamic accel detected: {accel_magnitude:.2f} m/s²")
+            return  # Don't update, just use prediction
+        
+        # Apply correction
+        self.x = self.K @ r
+        delta_theta = self.x[0:3]
+        delta_b = self.x[3:6]
+        
+        # Update quaternion estimate
+        delta_q = qt.quaternion(1, *(0.5 * delta_theta))
+        self.estimate = (self.estimate * delta_q).normalized()
+        
+        # Update bias estimate
+        self.b_hat += delta_b
+        
+        # Covariance update (Joseph form for numerical stability)
+        I_KH = np.eye(6) - self.K @ H
+        self.P = I_KH @ self.P @ I_KH.T + self.K @ self.R @ self.K.T
+
+    def state_measurements(self):
+        """Read measurements from sensors"""
+        return (self.gyro.t_data[-1], 
+                self.gyro.ax_data[-1], self.gyro.ay_data[-1], self.gyro.az_data[-1], 
+                self.gyro.gx_data[-1], self.gyro.gy_data[-1], self.gyro.gz_data[-1])
+
+    def MEKF_compiler(self):
+        """Main MEKF loop"""
+        while True:
+            self.predict_state()
+            self.update_state()
+            print(f"Estimate: {self.estimate}, Bias: {self.b_hat}")
+            time.sleep(self.dt / 1000.0)
+
+    def animate_compiler(self, MEKF_instance):
+        """Animate the MEKF orientation estimate"""
+        fig = plt.figure(figsize=(7, 7))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        def animate(i):
+            # Run one MEKF step
+            MEKF_instance.predict_state()
+            MEKF_instance.update_state()
+
+            q_est = MEKF_instance.estimate
+            
+            # FIXED: Use predicted gravity, not bias
+            a_pred = MEKF_instance.a_pred
+            
+            # Normalize measured accel for visualization
+            a_meas_norm = MEKF_instance.measured_accel / np.linalg.norm(MEKF_instance.measured_accel)
+
+            # Convert quaternion to rotation matrix
+            R_mat = qt.as_rotation_matrix(q_est)
+
+            # Body frame axes
+            body_x_vec = R_mat[:, 0]
+            body_y_vec = R_mat[:, 1]
+            body_z_vec = R_mat[:, 2]
+
+            # Clear and redraw
+            ax.cla()
+            ax.set_xlim([-1, 1])
+            ax.set_ylim([-1, 1])
+            ax.set_zlim([-1, 1])
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title('MEKF 3D Orientation')
+
+            # Draw body frame axes (RED=X, GREEN=Y, BLUE=Z)
+            ax.quiver(0, 0, 0, *body_x_vec, color='r', length=0.5, normalize=True, label='Body X')
+            ax.quiver(0, 0, 0, *body_y_vec, color='g', length=0.5, normalize=True, label='Body Y')
+            ax.quiver(0, 0, 0, *body_z_vec, color='b', length=0.5, normalize=True, label='Body Z')
+
+            # Predicted gravity (ORANGE)
+            ax.quiver(0, 0, 0, *a_pred, color='orange', length=0.6, normalize=True, 
+                     arrow_length_ratio=0.2, linewidth=2, label='Pred Gravity')
+
+            # Measured accelerometer (MAGENTA)
+            ax.quiver(0, 0, 0, *a_meas_norm, color='magenta', length=0.6, normalize=True, 
+                     arrow_length_ratio=0.2, linewidth=2, label='Meas Accel')
+            
+            ax.legend(loc='upper right', fontsize=8)
+            
+            return ax,
+
+        anim = FuncAnimation(fig, animate, interval=MEKF_instance.dt, blit=False)
+        plt.show()
+
+
+# Main execution
+if __name__ == "__main__":
+    MEKF_instance = MEKF()
+    time.sleep(15)  # Wait for some data to be collected
+    MEKF_instance.animate_compiler(MEKF_instance)

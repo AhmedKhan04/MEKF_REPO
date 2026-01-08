@@ -5,16 +5,10 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from collections import deque
 import threading
+import Gyro
 
-MAX_LEN = 1000
-t_data = deque(maxlen=MAX_LEN)
-ax_data = deque(maxlen=MAX_LEN)
-ay_data = deque(maxlen=MAX_LEN)
-az_data = deque(maxlen=MAX_LEN)
-gx_data = deque(maxlen=MAX_LEN)
-gy_data = deque(maxlen=MAX_LEN)
-gz_data = deque(maxlen=MAX_LEN)
 
+#Script to plot data from serial port in real-time
 
 def update_plot(fig, t, ax, ay, az, gx, gy, gz, ax1):
     for row in ax1:
@@ -41,61 +35,16 @@ def update_plot(fig, t, ax, ay, az, gx, gy, gz, ax1):
     ax1[1,2].set_ylabel('Gyroscope Z')
     return 
 
-def read_serial_port(port_name, baud_rate): 
-    
-
-    try:
-    
-        ser = serial.Serial(port_name, baud_rate, timeout=1)
-        time.sleep(3)  # Wait for the serial connection to initialize
-        print(f"Connected to {ser.portstr}")
-
-        while True:
-
-            encoded_data = ser.read(1)
-            print(f"Encoded data: {encoded_data}")
-            if (encoded_data == b'\xAA') :
-                raw = ser.read(28)
-                if len(raw) != 28:
-                    print("Incomplete data packet received.")
-                    continue
-                t, ax, ay, az, gx, gy, gz = struct.unpack('<I6f', raw)
-                t_data.append(t)
-                ax_data.append(ax)
-                ay_data.append(ay)
-                az_data.append(az)
-                gx_data.append(gx)
-                gy_data.append(gy)
-                gz_data.append(gz)
-                #ani = animation.FuncAnimation(fig, update_plot, fargs=( t_data, ax_data, ay_data, az_data, gx_data, gy_data, gz_data, ax1), interval=1000)
-                #plt.show()
-                print(f"t={t}, ax={ax:.3f}, ay={ay:.3f}, az={az:.3f}, "f"gx={gx:.3f}, gy={gy:.3f}, gz={gz:.3f}")
-        
-        
-
-    except serial.SerialException as e:
-        print(f"Error opening or communicating with serial port: {e}")
-    except KeyboardInterrupt:
-        print("Program terminated by user.")
-    finally:
-        if ser and ser.is_open:
-            ser.close()
-            print(f"Serial port {ser.port} closed.")
-
 if __name__ == "__main__":
     port = "COM11" 
     baud = 115200 
     #read_serial_port(port, baud)
+
+    gyro = Gyro.Gyro(port, baud)
+    gyro.read_serial_port()
     
     fig, ax1 = plt.subplots(nrows=2, ncols=3, figsize=(10, 8))
     plt.tight_layout()
-
-   
-
-    thread = threading.Thread(target=read_serial_port, args=(port, baud), daemon=True)
-    thread.start()
-
-
-    ani = animation.FuncAnimation(fig, update_plot, fargs=( t_data, ax_data, ay_data, az_data, gx_data, gy_data, gz_data, ax1), interval=5)
+    ani = animation.FuncAnimation(fig, update_plot, fargs=(gyro.t_data, gyro.ax_data, gyro.ay_data, gyro.az_data, gyro.gx_data, gyro.gy_data, gyro.gz_data, ax1), interval=5)
     plt.show()
     
