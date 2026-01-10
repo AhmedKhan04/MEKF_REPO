@@ -3,8 +3,7 @@
 This repo serves as the implementation of the Multiplicative Extended Kalman Filter for robust 3D orientation tracking using IMU (Inertial Measurement Unit) sensor data. This implementation fuses gyroscope and accelerometer measurements from an MPU6050 to provide accurate attitude estimates while compensating for sensor biases. Please see the repo: https://github.com/AhmedKhan04/Arduino-MEKF-Logger, to see the embedded code onboard the Arduino Nano and MPU6050 to stream values. 
 
 ## 🎥 Demo
-
-https://github.com/user-attachments/assets/061fe5ba-ee56-49d2-8dc1-e96d47a8d8da
+<video src="https://github.com/user-attachments/assets/061fe5ba-ee56-49d2-8dc1-e96d47a8d8da" autoplay loop muted playsinline width="100%"></video>
 
 *Real-time MEKF orientation tracking with 3D visualization*
 
