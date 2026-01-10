@@ -30,16 +30,16 @@ class MEKF:
         self.a_hat = np.array([0.0, 0.0, 0.0])  # Estimated accelerometer bias
 
         #self.inertia = np.diag([Ixx, Iyy, Izz])
-        self.sigma_gyro = 0.01  # gyro noise rad/s
+        self.sigma_gyro = 0.02  # gyro noise rad/s
         self.sigma_bias = 1e-5  # bias random walk
         self.P= np.eye(6) 
         
         self.P[0:3] *=  (self.sigma_gyro**2)
         self.P[3:6] *=  (self.sigma_bias**2)
 
-        sigma_acc = 0.05
+        sigma_acc = 0.03
         self.R = np.eye(3) * (sigma_acc**2)  # Measurement noise covariance
-        self.g_ref = np.array([0, 0, 9.81]).T  # down is +Z
+        self.g_ref = np.array([0, 0, -9.81]).T  # down is +Z
         self.G = np.eye(6)  # Process noise covariance
         #self.G [0:3, 0:3] *= -1 
 
@@ -91,7 +91,7 @@ class MEKF:
         
     def update_state(self):
         R_body_to_inertial = qt.as_rotation_matrix(self.estimate)
-        self.a_hat = R_body_to_inertial.T @ self.g_ref  # m/s²
+        self.a_hat = (R_body_to_inertial.T @ self.g_ref  )# m/s²
         
         # Measurement Jacobian
         self.H = np.zeros((3, 6))
@@ -103,12 +103,7 @@ class MEKF:
         
         r = self.measured_accel - self.a_hat  # Residual
         
-        # Check if we should trust this measurement (no dynamic accel)
-        # accel_magnitude = np.linalg.norm(self.measured_accel)
-        # if abs(accel_magnitude - 9.81) > 3.0:  # More than 3 m/s² off
-        #     print(f"Skipping update - dynamic accel detected: {accel_magnitude:.2f}")
-        #     return  # Don't update, just use prediction
-        
+   
         # Apply correction
         self.x = self.K @ r
         delta_theta = self.x[0:3]
@@ -158,7 +153,7 @@ class MEKF:
                 a_meas_norm = MEKF_instance.measured_accel / np.linalg.norm(MEKF_instance.measured_accel)
 
                 
-                R_mat = qt.as_rotation_matrix(q_est)
+                R_mat = qt.as_rotation_matrix(q_est).T
 
                
                 body_x_vec = R_mat[:, 0]
@@ -185,7 +180,7 @@ class MEKF:
                         arrow_length_ratio=0.2, linewidth=2, label='Pred Gravity')
 
                 # Measured accelerometer (MAGENTA)
-                ax.quiver(0, 0, 0, *a_meas_norm, color='magenta', length=0.6, normalize=True, 
+                ax.quiver(0, 0, 0, *-a_meas_norm, color='magenta', length=0.6, normalize=True, 
                         arrow_length_ratio=0.2, linewidth=2, label='Meas Accel')
                 
                 ax.legend(loc='upper right', fontsize=8)
