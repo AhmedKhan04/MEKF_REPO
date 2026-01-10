@@ -4,8 +4,7 @@ This repo serves as the implementation of the Multiplicative Extended Kalman Fil
 
 ## 🎥 Demo
 
-<!-- Replace with your video/gif -->
-https://github.com/user-attachments/assets/your-video-here.mp4
+https://github.com/user-attachments/assets/061fe5ba-ee56-49d2-8dc1-e96d47a8d8da
 
 *Real-time MEKF orientation tracking with 3D visualization*
 
