@@ -58,8 +58,11 @@ Where `R` is the rotation matrix derived from the estimated quaternion and `g_in
 2. **Update**: Correct estimate using accelerometer measurements
 3. **Reset**: Apply corrections to quaternion and reset error state
 
-For a detailed mathematical treatment, see:
+---
+
+### For a detailed mathematical treatment, see:
 📄 Cortiella, Alexandre & Vidal, David & Jane, Jaume & Juan, Enric & Olivé, Roger & Amézaga, Adrià & Munoz-Martin, Joan & Carreno-Luengo, Hugo & Camps, Adriano. (2017). 3Cat-2: Attitude Determination and Control System for a GNSS-R Earth Observation 6U CubeSat Mission. European Journal of Remote Sensing. 49. 759-776. 10.5721/EuJRS20164940. 
+
 ---
 
 ## 🚀 Getting Started
